@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>捕鱼达人</title>
+    <script src="js/sprite.js"></script>
+    <script src="js/fish.js"></script>
+    <script src="js/cannon.js"></script>
+    <script src="js/button.js"></script>
+    <script src="js/bullets.js"></script>
+    <script src="js/drawrect.js"></script>
+    <script src="js/coin.js"></script>
+    <script src="js/common.js"></script>
+    <style>
+        #canvas{
+            background:url('./images/game_bg.jpg') no-repeat;
+        }
+    </style>
+    <script>
+        //初始化参数
+        var oc;
+        var ctx;
+        var time;
+        var index = 0;
+        var tick = 0;
+        var _imgs;
+        var W;
+        var H;
+        var lastFire = 0;
+        var fired = false;
+        let MAX_FISH=30;
+        const coinCollector={x: 106, y: 576};//金币箩筐的位置
+        let play_score = 1000;
+        let timer;
+        
+        function init(){
+            oc = document.getElementById('canvas')
+            ctx = oc.getContext('2d');
+
+            W = oc.width;
+            H = oc.height;
+            //加载图片方法
+            loadImages(resource_img,function(){
+                //炮
+                var cannon = new Cannon(1);
+                //炮，数组
+                let bullets = [];
+
+                cannon.x = 450;
+                cannon.y = 570;
+
+                // 炮（转动）
+                oc.onmousemove = function(ev){
+                    var a = ev.offsetX - cannon.x;
+                    var b = ev.offsetY - cannon.y;
+                    var ang = a2d(Math.atan2(b,a))+90;
+                    cannon.rotation = ang;
+                }
+
+                var tower = new Sprite(new DrawRect(_imgs['bottom'], 0, 0, 756, 71));
+                tower.x = W / 2;
+                tower.y = H - 71 / 2 +1;
+
+                // 得分处理
+                let scores = [];
+                for(let i=0; i < 6; i++){
+                    let score = new Sprite(new DrawRect(_imgs.number, 0, 9*24, 20, 24));//先显示0
+                    score.x = 51+23*i;
+                    score.y = 586;
+                    scores.push(score);
+                }
+
+                //按钮
+                 //加号、减号
+                let btnMinus=new Button(
+                new DrawRect(_imgs.bottom, 135, 75, 36, 28),
+                new DrawRect(_imgs.bottom, 91, 75, 36, 28)
+                );
+                btnMinus.x=371;
+                btnMinus.y=566;
+
+                let btnPlus=new Button(
+                new DrawRect(_imgs.bottom, 47, 75, 36, 28),
+                new DrawRect(_imgs.bottom, 3, 75, 36, 28)
+                );
+                btnPlus.x=516;
+                btnPlus.y=566;
+
+                btnMinus.onclick = function(){    
+                    if(cannon.type>1){
+                        cannon.setType(cannon.type-1)
+                    }else{
+                        cannon.setType(1)
+                    }
+                }
+
+                btnPlus.onclick = function(){
+                    if(cannon.type<7){
+                        cannon.setType(cannon.type+1)
+                    }else{
+                        cannon.setType(7)
+                    }
+                }
+
+                let aBtn=[btnMinus, btnPlus];
+
+                oc.onmousedown=function (ev){
+                    //按钮点击
+                    aBtn.forEach(btn=>{
+                        btn.down(ev.offsetX, ev.offsetY);
+                    });
+                    //炮的运动
+                    if(new Date() - lastFire >= 1000){
+                        lastFire = new Date();
+                        let bullet = new Bullet(cannon.type, cannon.x, cannon.y, cannon.rotation);     
+                        bullets.push(bullet);
+                        fired = true;
+
+                        play_score-=bullet.type;
+                        console.log(play_score);
+                    }
+                    
+                };
+                oc.onmouseup=function (ev){
+                    aBtn.forEach(btn=>{
+                        btn.up(ev.offsetX, ev.offsetY);
+                    });
+                };
+
+                let fishs = [];
+                let coins = [];
+               
+                function animation(){
+                    requestAnimationFrame(animation);
+                    // 生成鱼
+                    if(rnd(1, 20) == 1 && fishs.length < MAX_FISH){
+                        let fish = new Fish(rnd(1,5));
+                        if(rnd(0,2) == 0){//左边
+                            fish.x = -100;
+                            fish.rotation=90;
+
+                        }else{//右边
+                            fish.x = W + 100;
+                            fish.rotation = -90;
+
+                        }
+                        fish.y = rnd(0, H-100);
+                        fishs.push(fish);
+                    }
+
+                    ctx.clearRect(0,0,800,600); 
+                    coins=coins.filter(coin => {
+                        coin.move(coinCollector.x, coinCollector.y);
+                        coin.nextFrame();
+                        coin.draw();
+                        // 金币距离金币箩筐的距离小于5，就把金币销毁
+                        if(Math.abs(coin.x-coinCollector.x) < 5 && Math.abs(coin.y-coinCollector.y)<5){
+                            play_score+=50;
+                            return false;
+                        }else{
+                            return true;
+                        }
+                    })
+
+                    tower.draw();     
+                    bullets=bullets.filter(bullet => {
+                        bullet.move();
+                        bullet.draw();
+
+                        return !bullet.outRect(-100, -100, W+200, H+200);
+                    })
+
+                    fishs=fishs.filter(fish => {
+                        fish.move();
+                        fish.nextFrame();
+                        fish.draw();
+                        return !fish.outRect(-100, -100, W+200, H+200);
+                    })
+ 
+                    if(fired){
+                        var res = cannon.nextFrame();
+                        if(res==true){
+                            fired = false;
+                        }
+                    }
+                    cannon.draw();
+                    btnMinus.draw();
+                    btnPlus.draw();
+
+                    //碰撞检测
+                    fishs = fishs.filter(fish => {
+                        let colled = false;
+                        bullets = bullets.filter(bullet =>{
+                            if(!colled){
+                                if(fish.collTest(bullet)){
+                                    // 设定一定的概率，炮弹打鱼的概率
+                                    if(Math.random() < bullet.type*10 / (10+(fish.type-1)*20)){
+                                        colled = true;
+                                    }
+                                    return false;
+
+                                }else{
+                                    return true;
+
+                                }
+
+                            }else{
+                                return true;
+                            }
+                        })      
+
+                        if(colled == true){
+                            fish.isDead = true;
+                            fish.speed = 0;
+
+                            //判断显示金币或银币
+                            let coin_type = 1;
+                            if(fish.type >= 3){
+                                coin_type = 2;
+                            }
+                            
+                            setTimeout(function (){
+
+                                // 金币生成
+                                let i = 0;
+                                timer = setInterval(function(){
+                                    let coin = new Coin(coin_type, fish.x, fish.y);
+                                    coins.push(coin);
+
+                                    i++;
+                                    if(i == Math.pow(2, fish.type)){
+                                        clearInterval(timer);
+                                    }
+                                },50)
+
+                                fishs = fishs.filter(item=>item!=fish);
+                            },550)
+
+                            return true;
+
+                        }else{
+                            return true;
+                        }
+                    })
+
+                    let str = play_score+'';
+                    while(str.length < 6){
+                        str = '0'+str;
+                    }
+
+                    // 得分显示
+                    scores.forEach((score, index) => {
+                        score.setDrawRect(new DrawRect(_imgs.number, 0, (9 - parseInt(str[index]))*24, 20, 24))
+                        score.draw();
+                    })
+                    
+                }
+
+                requestAnimationFrame(animation);
+            })
+          
+        }
+    </script>
+</head>
+<body onload="init()">
+    <canvas id="canvas" width="800" height="600"></canvas>
+</body>
+</html>
